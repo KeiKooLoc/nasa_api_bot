@@ -5,15 +5,15 @@ from telegram.error import BadRequest
 from telegram import ParseMode, InputMediaPhoto, Message
 from threading import Thread, Event
 from random import randint
-from time import time
-from datetime import timedelta
+# from time import time
+from datetime import timedelta, time
 import logging
 import requests
 import os
 import sys
 from time import sleep
 import pickle
-
+from database import DB
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -21,7 +21,8 @@ logging.basicConfig(level=logging.DEBUG,
 logger = logging.getLogger(__name__)
 nasa_api_key = os.environ.get('NASA_API_KEY')
 bot_token = os.environ.get('BOT_TOKEN')
-TESTING = False
+TESTING = True
+db = DB()
 
 channel_name = '@nasa_api_test' if TESTING else '@nasa_api'
 
@@ -33,10 +34,8 @@ def start(bot, update):
                               "We got next topics: "
                               "1) Astronomy Picture of the Day, "
                               "https://apod.nasa.gov/apod/astropix.html, "
-                              "/day_photo "
                               "2)EPIC API "
-                              "https://epic.gsfc.nasa.gov/, "
-                              "/epic_photo")
+                              "https://epic.gsfc.nasa.gov/,")
 
 
 def send_day_photo(bot, picture):
@@ -113,7 +112,10 @@ def send_epic_photo(bot, context):
     all_images = requests.get('https://api.nasa.gov/EPIC/api/'
                               'natural/date/{}?api_key={}'.format(
                                context['date'], nasa_api_key)).json()
-    arr = []
+    arr = [
+        # InputMediaPhoto(media='http://mars.nasa.gov/mer/gallery/all/2/p/2208/2P322473707ESFB27MP2600L8M1-BR.JPG',
+        # caption='photo 1')
+           ]
     for image in all_images:
         if image['image'] not in context['photo_names']:
             context['photo_names'][image['image']] = \
@@ -214,7 +216,8 @@ def send_mars_photo(bot, pictures):
                                            img['sol'], img['camera']['full_name']),
                                        parse_mode=ParseMode.HTML))
     if len(arr) > 0:
-        bot.send_media_group(chat_id=channel_name, media=arr)
+        bot.send_media_group(chat_id=channel_name, media=arr,
+                             disable_notification=True)
 
 
 def mars_photo(bot, update):
@@ -245,8 +248,83 @@ def check_mars_rover_updates(bot, job):
     send_mars_photo(bot, pictures)
 
 
+def check_img_vid_library_updates(bot, job):
+    pass
+
+
+def test_db_command(bot, update):
+    data = db.show_data()
+    print('-'*30)
+    print(data)
+    bot.send_message(chat_id=channel_name, text=str(data))
+
+
 def error(bot, update, error):
     logger.warning('Update "%s" caused error "%s"', update, error)
+
+
+"""
+JOBS_PICKLE = 'job_tuples.pickle'
+
+
+def load_jobs(jq):
+    now = time()
+
+    with open(JOBS_PICKLE, 'rb') as fp:
+        while True:
+            try:
+                next_t, job = pickle.load(fp)
+            except EOFError:
+                break  # Loaded all job tuples
+
+            # Create threading primitives
+            enabled = job._enabled
+            removed = job._remove
+
+            job._enabled = Event()
+            job._remove = Event()
+
+            if enabled:
+                job._enabled.set()
+
+            if removed:
+                job._remove.set()
+
+            next_t -= now  # Convert from absolute to relative time
+
+            jq._put(job, next_t)
+
+
+def save_jobs(jq):
+    if jq:
+        job_tuples = jq._queue.queue
+    else:
+        job_tuples = []
+
+        with open(JOBS_PICKLE, 'wb') as fp:
+            for next_t, job in job_tuples:
+                # Back up objects
+                _job_queue = job._job_queue
+                _remove = job._remove
+                _enabled = job._enabled
+
+                # Replace un-pickleable threading primitives
+                job._job_queue = None  # Will be reset in jq.put
+                job._remove = job.removed  # Convert to boolean
+                job._enabled = job.enabled  # Convert to boolean
+
+                # Pickle the job
+                pickle.dump((next_t, job), fp)
+
+                # Restore objects
+                job._job_queue = _job_queue
+                job._remove = _remove
+                job._enabled = _enabled
+
+
+def save_jobs_job(bot, job):
+    save_jobs(job.job_queue)
+"""
 
 
 def main():
@@ -263,16 +341,37 @@ def main():
                                   filters=Filters.user(username='@keikoobro')))
     dp.add_error_handler(error)
 
+
+    # dp.add_handler(CommandHandler('db', test_db_command,))
+
+
+
+
     jq.run_repeating(check_nasa_day_photo_updates, interval=3600, first=0,
                      context=make_day_photo_context(testing=TESTING))
-    jq.run_repeating(check_nasa_epic_updates, interval=3600, first=10 if TESTING else 300,
+    jq.run_repeating(check_nasa_epic_updates, interval=3600, first=6000 if TESTING else 300,
                      context=make_epic_context(testing=TESTING))
-    jq.run_repeating(check_mars_rover_updates, interval=25000, first=70 if TESTING else 25000,
+    jq.run_daily(check_mars_rover_updates, time=time(17, 30),
+                 context={'Curiosity': 2320,
+                          'Opportunity': 5111,
+                          'Spirit': 2208,
+                          'all': ['Curiosity', 'Opportunity', 'Spirit']})
+    """
+    jq.run_repeating(check_mars_rover_updates, interval=25000, first=6000 if TESTING else 25000,
                      context={'Curiosity': 2320,
                               'Opportunity': 5111,
                               'Spirit': 2208,
                               'all': ['Curiosity', 'Opportunity', 'Spirit']})
-    
+    """
+    """
+    jq.run_repeating(save_jobs_job, timedelta(minutes=1))
+
+    try:
+        load_jobs(jq)
+
+    except FileNotFoundError:
+        pass
+    """
     def stop_and_restart():
         updater.stop()
         os.execl(sys.executable, sys.executable, *sys.argv)
@@ -286,6 +385,8 @@ def main():
 
     updater.start_polling()
     updater.idle()
+
+    #  save_jobs(jq)
 
 
 if __name__ == '__main__':
