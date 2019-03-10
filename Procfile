@@ -1,1 +1,1 @@
-app: python3 bot.py
+web: python3 webhook.py
