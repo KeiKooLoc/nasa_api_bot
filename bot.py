@@ -2,7 +2,7 @@ from PIL import Image
 from io import BytesIO
 from telegram.ext import Updater, CommandHandler, Filters
 from telegram.error import BadRequest
-from telegram import ParseMode, InputMediaPhoto, Message
+from telegram import ParseMode, InputMediaPhoto, Message, Bot
 from threading import Thread, Event
 from random import randint
 # from time import time
@@ -13,16 +13,15 @@ import os
 import sys
 from time import sleep
 import pickle
-from database import DB
+#from database import DB
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
 logger = logging.getLogger(__name__)
 nasa_api_key = os.environ.get('NASA_API_KEY')
 bot_token = os.environ.get('BOT_TOKEN')
 TESTING = True
-db = DB()
+# db = DB()
 
 channel_name = '@nasa_api_test' if TESTING else '@nasa_api'
 
@@ -38,10 +37,13 @@ def start(bot, update):
                               "https://epic.gsfc.nasa.gov/,")
 
 
-def send_day_photo(bot, picture):
+def send_day_photo(bot, picture, update=None):
     # sending video
+    address = channel_name
+    if update:
+        address = update.message.chat_id
     if picture['media_type'] == 'video':
-        bot.send_message(chat_id=channel_name,
+        bot.send_message(chat_id=address,
                          text='<b>Astronomy Picture of the Day: </b>'
                               '<b>{title} </b>'
                               '<code>{explanation} </code>'
@@ -53,39 +55,43 @@ def send_day_photo(bot, picture):
     else:
         try:
             # sending photo in hd
-            msg = bot.send_photo(chat_id=channel_name, photo=picture['hdurl'],
+            msg = bot.send_photo(chat_id=address, photo=picture['hdurl'],
                                  caption='<b>Astronomy Picture of the Day: </b>'
                                          '<code>{}</code>'.format(picture['title']),
                                  parse_mode=ParseMode.HTML)
 
-            bot.send_message(chat_id=channel_name,
+            bot.send_message(chat_id=address,
                              text='<code>{}</code>'.format(picture['explanation']),
                              parse_mode=ParseMode.HTML,
                              reply_to_message_id=msg.message_id)
         # else sending photo not in hd
         except BadRequest:
-            msg = bot.send_photo(chat_id=channel_name, photo=picture['url'],
+            msg = bot.send_photo(chat_id=address, photo=picture['url'],
                                  caption='<b>Astronomy picture of the day: </b>'
                                          '<code>{}</code>'.format(
                                              picture['title']),
                                  parse_mode=ParseMode.HTML)
 
-            bot.send_message(chat_id=channel_name,
+            bot.send_message(chat_id=address,
                              text='<code>{}</code>'.format(
                                       picture['explanation']),
                              parse_mode=ParseMode.HTML,
                              reply_to_message_id=msg.message_id)
 
 
-def day_photo(bot, update):
+def day_photo(bot, update, args):
     picture = requests.get('https://api.nasa.gov/planetary/apod?'
                            'api_key={}'.format(nasa_api_key))
     if picture.status_code == 200:
-        send_day_photo(bot, picture.json())
+        if args:
+            send_day_photo(bot, picture.json(), update=update)
+        else:
+            send_day_photo(bot, picture.json())
     else:
         bot.send_message(chat_id='@keikoobro',
                          text='day_photo() | status: {}'.format(
                              picture.status_code))
+
 
 
 def check_nasa_day_photo_updates(bot, job):
@@ -108,7 +114,7 @@ def make_day_photo_context(testing=False):
                                  'api_key={}'.format(nasa_api_key)).json()['date']}
 
 
-def send_epic_photo(bot, context):
+def send_epic_photo(bot, context, update=None):
     all_images = requests.get('https://api.nasa.gov/EPIC/api/'
                               'natural/date/{}?api_key={}'.format(
                                context['date'], nasa_api_key)).json()
@@ -144,20 +150,32 @@ def send_epic_photo(bot, context):
                                                 context['photo_names'][image['image']]),
                                        parse_mode=ParseMode.HTML))
     if len(arr) > 0:
-        try:
-            bot.send_media_group(chat_id=channel_name, media=arr)
-        except BadRequest:
-            bot.send_media_group(chat_id=channel_name, media=arr[:10])
-            bot.send_media_group(chat_id=channel_name, media=arr[10:])
+        if update:
+            try:
+                bot.send_media_group(chat_id=update.message.chat_id, media=arr)
+            except BadRequest:
+                bot.send_media_group(chat_id=update.message.chat_id, media=arr[:10])
+                bot.send_media_group(chat_id=update.message.chat_id, media=arr[10:])
+        else:
+            try:
+                bot.send_media_group(chat_id=channel_name, media=arr)
+            except BadRequest:
+                bot.send_media_group(chat_id=channel_name, media=arr[:10])
+                bot.send_media_group(chat_id=channel_name, media=arr[10:])
 
 
-def epic_photo(bot, update):
+def epic_photo(bot, update, args):
     dates = requests.get('https://api.nasa.gov/EPIC/api'
                          '/natural/all?api_key={}'.format(
                               nasa_api_key)).json()
     date = dates[0]['date']
-    send_epic_photo(bot, context={'date': date,
-                                  'photo_names': {}})
+    if args:
+        send_epic_photo(bot, context={'date': date,
+                                      'photo_names': {}},
+                        update=update)
+    else:
+        send_epic_photo(bot, context={'date': date,
+                                      'photo_names': {}})
 
 
 def check_nasa_epic_updates(bot, job):
@@ -192,7 +210,7 @@ def make_epic_context(testing=False):
     return context
 
 
-def send_mars_photo(bot, pictures):
+def send_mars_photo(bot, pictures, update=None):
     arr = []
     if len(pictures) > 5:
         for i in range(5):
@@ -216,11 +234,15 @@ def send_mars_photo(bot, pictures):
                                            img['sol'], img['camera']['full_name']),
                                        parse_mode=ParseMode.HTML))
     if len(arr) > 0:
-        bot.send_media_group(chat_id=channel_name, media=arr,
-                             disable_notification=True)
+        if update:
+            bot.send_media_group(chat_id=update.message.chat_id, media=arr,
+                                 disable_notification=True)
+        else:
+            bot.send_media_group(chat_id=channel_name, media=arr,
+                                 disable_notification=True)
 
 
-def mars_photo(bot, update):
+def mars_photo(bot, update, args):
     context = {'Curiosity': 2320,
                'Opportunity': 5111,
                'Spirit': 2208,
@@ -233,7 +255,10 @@ def mars_photo(bot, update):
                                 rover,
                                 randint(1, context[rover]),
                                 nasa_api_key)).json()['photos']
-    send_mars_photo(bot, pictures)
+    if args:
+        send_mars_photo(bot, pictures, update=update)
+    else:
+        send_mars_photo(bot, pictures)
 
 
 def check_mars_rover_updates(bot, job):
@@ -253,10 +278,8 @@ def check_img_vid_library_updates(bot, job):
 
 
 def test_db_command(bot, update):
-    data = db.show_data()
-    print('-'*30)
-    print(data)
-    bot.send_message(chat_id=channel_name, text=str(data))
+    bot.send_message(chat_id=update.message.chat_id,
+                     text=str(os.path.abspath(os.path.dirname(__file__))))
 
 
 def error(bot, update, error):
@@ -333,16 +356,16 @@ def main():
     jq = updater.job_queue
 
     dp.add_handler(CommandHandler('start', start))
-    dp.add_handler(CommandHandler('day_photo', day_photo,
+    dp.add_handler(CommandHandler('day_photo', day_photo, pass_args=True,
                                   filters=Filters.user(username='@keikoobro')))
-    dp.add_handler(CommandHandler('epic_photo', epic_photo,
+    dp.add_handler(CommandHandler('epic_photo', epic_photo, pass_args=True,
                                   filters=Filters.user(username='@keikoobro')))
-    dp.add_handler(CommandHandler('mars', mars_photo,
+    dp.add_handler(CommandHandler('mars', mars_photo, pass_args=True,
                                   filters=Filters.user(username='@keikoobro')))
     dp.add_error_handler(error)
 
 
-    # dp.add_handler(CommandHandler('db', test_db_command,))
+    dp.add_handler(CommandHandler('db', test_db_command,))
 
 
 
@@ -382,9 +405,24 @@ def main():
 
     dp.add_handler(CommandHandler('r', restart,
                                   filters=Filters.user(username='@keikoobro')))
+    """
+    web_server_link = 'https://safe-ridge-16430.herokuapp.com/'
+    bot = Bot(token=bot_token)
+    
+    updater.start_webhook(listen="0.0.0.0",
+                          port=443,
+                          url_path=bot_token,
+                          key=str(os.path.abspath(os.path.dirname(__file__))) + '/webhook_pkey.key',
+                          cert=str(os.path.abspath(os.path.dirname(__file__))) + '/webhook_cert.pem',
+                          webhook_url=web_server_link + bot_token)
+    # updater.bot.set_webhook(web_server_link + bot_token)
+    """
+    bot = Bot(token=bot_token)
+    bot.set_webhook()
 
     updater.start_polling()
     updater.idle()
+
 
     #  save_jobs(jq)
 
