@@ -29,7 +29,7 @@ def apod(bot, update, args):
         if args:
             send_apod(bot, picture, update.message.chat_id)
         else:
-            send_apod(bot, picture, update.message.chat_id)
+            send_apod(bot, picture, conf['CHANNEL_NAME'])
 
 
 def check_apod_updates(bot, job):
