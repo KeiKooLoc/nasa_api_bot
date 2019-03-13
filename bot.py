@@ -12,15 +12,15 @@ import os
 import sys
 from time import sleep
 import pickle
-#from database import DB
+from database import show_data, img_lib_req_tags, \
+    epic_table, mars_table, img_lib_table
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 nasa_api_key = os.environ.get('NASA_API_KEY')
 bot_token = os.environ.get('BOT_TOKEN')
-TESTING = False
-# db = DB()
+TESTING = True
 
 channel_name = '@nasa_api_test' if TESTING else '@nasa_api'
 
@@ -39,7 +39,7 @@ def start(bot, update):
                               )
 
 
-def send_day_photo(bot, picture, update=None):
+def send_apod(bot, picture, update=None):
     address = channel_name
     if update:
         address = update.message.chat_id
@@ -80,41 +80,41 @@ def send_day_photo(bot, picture, update=None):
                              reply_to_message_id=msg.message_id)
 
 
-def day_photo(bot, update, args):
+def apod(bot, update, args):
     picture = requests.get('https://api.nasa.gov/planetary/apod?'
                            'api_key={}'.format(nasa_api_key))
     if picture.status_code == 200:
         if args:
-            send_day_photo(bot, picture.json(), update=update)
+            send_apod(bot, picture.json(), update=update)
         else:
-            send_day_photo(bot, picture.json())
+            send_apod(bot, picture.json())
     else:
         bot.send_message(chat_id=update.message.chat_id,
-                         text='day_photo() | status: {}'.format(
+                         text='def apod() | status: {}'.format(
                              picture.status_code))
 
 
-def check_nasa_day_photo_updates(bot, job):
+def check_apod_updates(bot, job):
     picture = requests.get('https://api.nasa.gov/planetary/apod?'
                            'api_key={}'.format(nasa_api_key))
     if picture.status_code == 200:
         if job.context['date'] != picture.json()['date']:
             job.context['date'] = picture.json()['date']
-            send_day_photo(bot, picture.json())
+            send_apod(bot, picture.json())
     else:
         bot.send_message(chat_id='@nasa_api_test',
-                         text='check_nasa_day_photo_updates() | status: {}'.format(
+                         text='check_apod_updates() | status: {}'.format(
                              picture.status_code))
 
 
-def make_day_photo_context(testing=False):
+def make_apod_context(testing=False):
     if testing:
         return {'date': ''}
     return {'date': requests.get('https://api.nasa.gov/planetary/apod?'
                                  'api_key={}'.format(nasa_api_key)).json()['date']}
 
 
-def send_epic_photo(bot, context, update=None):
+def send_epic(bot, context, update=None):
     all_images = requests.get('https://api.nasa.gov/EPIC/api/'
                               'natural/date/{}?api_key={}'.format(
                                context['date'], nasa_api_key))
@@ -167,30 +167,31 @@ def send_epic_photo(bot, context, update=None):
                     bot.send_media_group(chat_id=channel_name, media=arr[10:])
     else:
         bot.send_message(chat_id='@nasa_api_test',
-                         text='send_epic_photo(), all_images | status: {}'.format(
+                         text='def send_epic(), all_images | status: {}'.format(
                              all_images.status_code))
 
 
-def epic_photo(bot, update, args):
+def epic(bot, update, args):
     dates = requests.get('https://api.nasa.gov/EPIC/api'
                          '/natural/all?api_key={}'.format(
                               nasa_api_key))
     if dates.status_code == 200:
         date = dates.json()[0]['date']
         if args:
-            send_epic_photo(bot, context={'date': date,
-                                          'photo_names': {}},
-                            update=update)
+            send_epic(bot, context={'date': date,
+                                    'photo_names': {}},
+                      update=update)
         else:
-            send_epic_photo(bot, context={'date': date,
-                                          'photo_names': {}})
+            send_epic(bot, context={'date': date,
+                                    'photo_names': {}})
     else:
         bot.send_message(chat_id=update.message.chat_id,
-                         text='epic_photo() | status: {}'.format(
+                         text='def epic() | status: {}'.format(
                                          dates.status_code))
 
 
-def check_nasa_epic_updates(bot, job):
+# test if i could check only the date and use job context for it
+def check_epic_updates(bot, job):
     # take the last day for available photos
     dates = requests.get('https://api.nasa.gov/EPIC/api'
                          '/natural/all?api_key={}'.format(
@@ -200,12 +201,12 @@ def check_nasa_epic_updates(bot, job):
         if job.context['date'] != date:
             job.context['date'] = date
             job.context['photo_names'] = {}
-            send_epic_photo(bot, job.context)
+            send_epic(bot, job.context)
         else:
-            send_epic_photo(bot, job.context)
+            send_epic(bot, job.context)
     else:
         bot.send_message(chat_id='@nasa_api_test',
-                         text='epic_photo() | status: {}'.format(
+                         text='def check_nasa_epic_updates() | status: {}'.format(
                                          dates.status_code))
 
 
@@ -227,7 +228,7 @@ def make_epic_context(testing=False):
     return context
 
 
-def send_mars_photo(bot, pictures, update=None):
+def send_mars_photos(bot, pictures, update=None):
     arr = []
     if len(pictures) > 5:
         for i in range(5):
@@ -259,7 +260,7 @@ def send_mars_photo(bot, pictures, update=None):
                                  disable_notification=True)
 
 
-def mars_photo(bot, update, args):
+def mars_photos(bot, update, args):
     context = {'Curiosity': 2320,
                'Opportunity': 5111,
                'Spirit': 2208,
@@ -274,16 +275,16 @@ def mars_photo(bot, update, args):
                                 nasa_api_key))
     if pictures.status_code == 200:
         if args:
-            send_mars_photo(bot, pictures.json()['photos'], update=update)
+            send_mars_photos(bot, pictures.json()['photos'], update=update)
         else:
-            send_mars_photo(bot, pictures.json()['photos'])
+            send_mars_photos(bot, pictures.json()['photos'])
     else:
         bot.send_message(chat_id=update.message.chat_id,
                          text='mars_photo() | status: {}'.format(
                                          pictures.status_code))
 
 
-def check_mars_rover_updates(bot, job):
+def check_mars_photos_updates(bot, job):
     rover = job.context['all'][randint(0, 2)]
     pictures = requests.get('https://api.nasa.gov/mars-photos/api/v1/'
                             'rovers/{}/photos?'
@@ -293,19 +294,36 @@ def check_mars_rover_updates(bot, job):
                                 randint(1, job.context[rover]),
                                 nasa_api_key))
     if pictures.status_code == 200:
-        send_mars_photo(bot, pictures.json()['photos'])
+        send_mars_photos(bot, pictures.json()['photos'])
     else:
         bot.send_message(chat_id='@nasa_api_test',
-                         text='mars_photo() | status: {}'.format(
+                         text='check_mars_photos_updates() | status: {}'.format(
                                          pictures.status_code))
 
-def check_img_vid_library_updates(bot, job):
+
+def img_lib(bot, update):
+    pass
+
+
+def check_img_lib_updates(bot, job):
+    pictures = requests.get('https://images-api.nasa.gov/search?'
+                            'q={}&'
+                            'media_type=image'.format(
+                                img_lib_req_tags[randint(0, len(img_lib_req_tags) - 1)]))
+    if pictures.status_code == 200:
+        for i in pictures.json()['collection']['items']:
+            img_in_db = img_lib_table.find_one({'nasa_id': str(i['data'][0]['nasa_id'])})
+            if not img_in_db:
+                img_lib_table.insert_one({'nasa_id': str(i['data'][0]['nasa_id'])})
+    else:
+        bot.send_message(chat_id='@nasa_api_test',
+                         text='def check_img_lib_updates() | status: {}'.format(
+                                         pictures.status_code))
     pass
 
 
 def test_db_command(bot, update):
-    bot.send_message(chat_id=update.message.chat_id,
-                     text=str(os.path.abspath(os.path.dirname(__file__))))
+    show_data()
 
 
 def error(bot, update, error):
@@ -313,40 +331,32 @@ def error(bot, update, error):
 
 
 def main():
+    bot = Bot(token=bot_token)
     updater = Updater(token=bot_token)
     dp = updater.dispatcher
     jq = updater.job_queue
 
     dp.add_handler(CommandHandler('start', start))
-    dp.add_handler(CommandHandler('day_photo', day_photo, pass_args=True,
+    dp.add_handler(CommandHandler('apod', apod, pass_args=True,
                                   filters=Filters.user(username='@keikoobro')))
-    dp.add_handler(CommandHandler('epic_photo', epic_photo, pass_args=True,
+    dp.add_handler(CommandHandler('epic', epic, pass_args=True,
                                   filters=Filters.user(username='@keikoobro')))
-    dp.add_handler(CommandHandler('mars', mars_photo, pass_args=True,
+    dp.add_handler(CommandHandler('mars', mars_photos, pass_args=True,
                                   filters=Filters.user(username='@keikoobro')))
     dp.add_error_handler(error)
 
-
     dp.add_handler(CommandHandler('db', test_db_command,))
 
-
-    jq.run_repeating(check_nasa_day_photo_updates, interval=3600, first=0,
-                     context=make_day_photo_context(testing=TESTING))
-    jq.run_repeating(check_nasa_epic_updates, interval=3600, first=6000 if TESTING else 300,
+    jq.run_repeating(check_apod_updates, interval=3600, first=0,
+                     context=make_apod_context(testing=TESTING))
+    jq.run_repeating(check_epic_updates, interval=3600, first=10 if TESTING else 300,
                      context=make_epic_context(testing=TESTING))
-    jq.run_daily(check_mars_rover_updates, time=time(17, 30),
+    jq.run_daily(check_mars_photos_updates, time=time(17, 30),
                  context={'Curiosity': 2320,
                           'Opportunity': 5111,
                           'Spirit': 2208,
                           'all': ['Curiosity', 'Opportunity', 'Spirit']})
-    """
-    jq.run_repeating(check_mars_rover_updates, interval=25000, first=6000 if TESTING else 25000,
-                     context={'Curiosity': 2320,
-                              'Opportunity': 5111,
-                              'Spirit': 2208,
-                              'all': ['Curiosity', 'Opportunity', 'Spirit']})
-    """
-    
+
     def stop_and_restart():
         updater.stop()
         os.execl(sys.executable, sys.executable, *sys.argv)
@@ -358,8 +368,8 @@ def main():
     dp.add_handler(CommandHandler('r', restart,
                                   filters=Filters.user(username='@keikoobro')))
 
-    bot = Bot(token=bot_token)
-    bot.set_webhook()
+    if bot.get_webhook_info()['url']:
+        bot.set_webhook()
 
     updater.start_polling()
     updater.idle()
