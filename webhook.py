@@ -7,18 +7,16 @@ import os
 from datetime import time
 from telegram import Bot, Update
 from telegram.ext import Dispatcher, CommandHandler, Filters, JobQueue
-from bot import start, day_photo, epic_photo, mars_photo, error, \
-    check_nasa_day_photo_updates, make_day_photo_context, \
-    check_nasa_epic_updates, make_epic_context, \
-    check_mars_rover_updates, TESTING
-
+from bot import start, apod, epic, mars_photos, error, \
+    check_apod_updates, make_apod_context, \
+    check_epic_updates, make_epic_context, \
+    check_mars_photos_updates, test_db_command, TESTING
+from config import conf
 
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-bot_token = os.environ.get('BOT_TOKEN')
 
 
 def get_info(bot, update):
@@ -27,33 +25,35 @@ def get_info(bot, update):
 
 
 def setup():
-    bot = Bot(token=bot_token)
+    bot = Bot(token=conf['BOT_TOKEN'])
     update_queue = Queue()
-    dispatcher = Dispatcher(bot, update_queue)
-    job_queue = JobQueue(bot)
+    dp = Dispatcher(bot, update_queue)
+    jq = JobQueue(bot)
 
-    dispatcher.add_handler(CommandHandler('start', start))
-    dispatcher.add_handler(CommandHandler('day_photo', day_photo, pass_args=True,
-                                          filters=Filters.user(username='@keikoobro')))
-    dispatcher.add_handler(CommandHandler('epic_photo', epic_photo, pass_args=True,
-                                          filters=Filters.user(username='@keikoobro')))
-    dispatcher.add_handler(CommandHandler('mars', mars_photo, pass_args=True,
-                                          filters=Filters.user(username='@keikoobro')))
-    dispatcher.add_error_handler(error)
-    dispatcher.add_handler(CommandHandler('info', get_info,
-                                          filters=Filters.user(username='@keikoobro')))
+    # Commands for admin
+    dp.add_handler(CommandHandler('start', start))
+    dp.add_handler(CommandHandler('apod', apod, pass_args=True,
+                                  filters=Filters.user(username=conf['ADMIN'])))
+    dp.add_handler(CommandHandler('epic', epic, pass_args=True,
+                                  filters=Filters.user(username=conf['ADMIN'])))
+    dp.add_handler(CommandHandler('mars', mars_photos, pass_args=True,
+                                  filters=Filters.user(username=conf['ADMIN'])))
+    dp.add_handler(CommandHandler('db', test_db_command,
+                                  filters=Filters.user(username=conf['ADMIN'])))
+    dp.add_error_handler(error)
 
-    job_queue.run_repeating(check_nasa_day_photo_updates, interval=3600, first=0,
-                            context=make_day_photo_context(testing=TESTING))
-    job_queue.run_repeating(check_nasa_epic_updates, interval=3600, first=6000 if TESTING else 500,
-                            context=make_epic_context(testing=TESTING))
-    job_queue.run_daily(check_mars_rover_updates, time=time(17),
-                        context={'Curiosity': 2320,
-                                 'Opportunity': 5111,
-                                 'Spirit': 2208,
-                                 'all': ['Curiosity', 'Opportunity', 'Spirit']})
+    #
+    jq.run_repeating(check_apod_updates, interval=3600, first=0,
+                     context=make_apod_context(bot, TESTING))
+    jq.run_repeating(check_epic_updates, interval=3600, first=15 if TESTING else 500,
+                     context=make_epic_context(bot, TESTING))
+    jq.run_daily(check_mars_photos_updates, time=time(9),
+                 context={'Curiosity': 2320,
+                          'Opportunity': 5111,
+                          'Spirit': 2208,
+                          'all': ['Curiosity', 'Opportunity', 'Spirit']})
 
-    s = bot.set_webhook(url='https://safe-ridge-16430.herokuapp.com/hook/' + bot_token)
+    s = bot.set_webhook(url='https://salty-escarpment-89606.herokuapp.com/hook/' + conf['BOT_TOKEN'])
     if s:
         print(s)
         logger.info('webhook setup ok')
@@ -61,9 +61,9 @@ def setup():
         print(s)
         logger.info('webhook setup failed')
 
-    thread = Thread(target=dispatcher.start, name='dispatcher')
+    thread = Thread(target=dp.start, name='dispatcher')
     thread.start()
-    job_queue.start()
+    jq.start()
 
     return update_queue, bot
 
@@ -73,7 +73,7 @@ update_queue, bot = setup()
 app = Flask(__name__)
 
 
-@app.route('/hook/' + bot_token, methods=['POST'])
+@app.route('/hook/' + conf['BOT_TOKEN'], methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
         update = Update.de_json(request.get_json(force=True), bot)
